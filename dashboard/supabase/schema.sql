@@ -159,7 +159,9 @@ create table public.tariff_treatments (
 create index tariff_treatments_key_idx on public.tariff_treatments (key, book_id);
 create index tariff_treatments_book_idx on public.tariff_treatments (book_id);
 
--- How each hospital's prices compare with the others', from the rows their documents name the same way.
+-- How each hospital's prices compare with the others', from the rows their documents name the same way:
+-- each row against the median of the same row at the other hospitals, the ratios averaged geometrically,
+-- rated from 5 shared rows.
 create or replace view public.hospital_price_index with (security_invoker = true) as
 with current_books as (
   -- A hospital's current document is its latest published one.
@@ -185,18 +187,19 @@ hospital_prices as (
   where length(name_key) >= 4
   group by hospital_id, name_key
 ),
-shared as (
-  select name_key, percentile_cont(0.5) within group (order by mid) as median
-  from hospital_prices
-  group by name_key
-  having count(*) >= 2
+-- Each of a hospital's rows against the median of the same row at the other hospitals.
+compared as (
+  select h.hospital_id, h.mid, percentile_cont(0.5) within group (order by o.mid) as others
+  from hospital_prices h
+  join hospital_prices o on o.name_key = h.name_key and o.hospital_id <> h.hospital_id
+  group by h.hospital_id, h.name_key, h.mid
 )
-select h.hospital_id,
-       avg(h.mid / s.median) as price_index,  -- 0.92: 8% cheaper than the median of the same rows elsewhere
+select hospital_id,
+       exp(avg(ln(mid / others))) as price_index,  -- 0.92: 8% cheaper than the other hospitals on the same rows
        count(*)::integer as compared_rows
-from hospital_prices h
-join shared s using (name_key)
-group by h.hospital_id;
+from compared
+group by hospital_id
+having count(*) >= 5;
 
 -- Every tindakan in the hospitals' current documents, with how many hospitals price it. Cari Rujukan picks from it.
 create or replace view public.treatment_list with (security_invoker = true) as
