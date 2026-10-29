@@ -12,6 +12,8 @@ __pycache__/
 
 # sample tariff documents (client data, kept out of the repository)
 data/
+# ...but not the dashboard's data-access code
+!dashboard/src/lib/data/
 
 # supabase cli
 dashboard/supabase/.temp/
