@@ -300,8 +300,8 @@ function CompareTable({
               columns={columns}
               render={(c) => (
                 <span>
-                  <RatingPill level={c.summary.services.level} />
-                  <span className="block text-xs text-muted-foreground">{c.summary.services.reason}</span>
+                  <RatingPill level={c.summary.services?.level ?? null} />
+                  {c.summary.services && <span className="block text-xs text-muted-foreground">{c.summary.services.reason}</span>}
                 </span>
               )}
             />

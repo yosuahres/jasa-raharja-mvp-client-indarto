@@ -169,7 +169,8 @@ export type HospitalSummary = {
   servicesScore: number;
   /** Prices against the other hospitals'; null until another hospital's document shares rows with its. */
   price: Rating<PriceLevel> | null;
-  services: Rating<ServiceLevel>;
+  /** Null without a tariff document: what a hospital offers is only known from what its document prices. */
+  services: Rating<ServiceLevel> | null;
   /** Harga and Layanan together, 0–100 by place among the hospitals: what the rank and tipe come from. */
   composite: number;
   /** Its quarter among every hospital with a published document; null until this one has one. */
@@ -204,7 +205,7 @@ export const allSummaries = (data: Dataset): HospitalSummary[] => {
       parameters: scoreParameters(hospital, data, own),
       servicesScore: compositeOf(own),
       price: pricePlace && hospital.priceIndex ? { level: PRICE_BY_TIER[pricePlace.tier], reason: priceReason(hospital.priceIndex) } : null,
-      services: { level: SERVICE_BY_TIER[servicePlace?.tier ?? "C"], reason: serviceReason(hospital) },
+      services: servicePlace ? { level: SERVICE_BY_TIER[servicePlace.tier], reason: serviceReason(hospital) } : null,
       composite: parts.length ? (parts.reduce((sum, p) => sum + p, 0) / parts.length) * 100 : 0,
     };
   });

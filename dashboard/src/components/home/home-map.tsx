@@ -19,7 +19,7 @@ export type HomeMapRow = {
   city: string;
   tipe: Tipe | null;
   price: { level: PriceLevel; reason: string } | null;
-  services: { level: ServiceLevel; reason: string };
+  services: { level: ServiceLevel; reason: string } | null;
   location: { lat: number; lng: number } | null;
 };
 
@@ -91,8 +91,8 @@ export function HomeMap({ rows = [] }: { rows?: HomeMapRow[] }) {
                     </span>
                   </td>
                   <td className={TD}>
-                    <span title={row.services.reason}>
-                      <RatingPill level={row.services.level} />
+                    <span title={row.services?.reason}>
+                      <RatingPill level={row.services?.level ?? null} />
                     </span>
                   </td>
                   <td className={TD}>

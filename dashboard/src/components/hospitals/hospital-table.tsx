@@ -16,6 +16,7 @@ import { PAGE_SIZE_OPTIONS, TablePager } from "@/components/data-table/table-pag
 import { TableSearchInput } from "@/components/data-table/table-search-input";
 import { FULL_PAGE, TOOLBAR } from "@/components/data-table/styles";
 import { useColumnPrefs } from "@/components/data-table/use-column-prefs";
+import { Excess, RiskBadge, RuleTags } from "@/components/claims/table";
 import {
   COLUMNS,
   type ColumnId,
@@ -23,30 +24,39 @@ import {
   DEFAULT_LAYOUT,
   type FilterId,
   type Filters,
-  filterValueOf,
+  filterValuesOf,
   type HospitalQuery,
   type HospitalRow,
+  isSortable,
   matches,
   NO_FILTERS,
   NOT_STATED,
+  NUMERIC,
   QUERY_PARAMS,
   queryEntries,
+  TABLE_STATE_COOKIE,
+  RISK_CHOICES,
   SORT_OPTIONS,
   type SortKey,
   sortRows,
+  STATUS_CHOICES,
+  statusOf,
   TARIFF_DOT,
   TARIFF_LABEL,
   type TariffStatus,
   TIPE_DOT,
   TIPES,
+  SHARE_CHOICES,
 } from "@/components/hospitals/hospital-list";
 import { LinkRow } from "@/components/link-row";
 import { RatingPill } from "@/components/rating";
 import { TipeBadge } from "@/components/tier-badge";
+import { RULES } from "@/lib/claims/analysis";
+import { formatPercent, formatRupiahShort } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-// v2: every column shows by default now; older saved layouts started with four hidden.
-const PREFS_KEY = "rumah-sakit:tabel:v2";
+// v4: the claim columns and Status data joined; older saved layouts don't know them.
+const PREFS_KEY = "rumah-sakit:tabel:v4";
 const CHECK_COL_WIDTH = 44;
 
 const TH =
@@ -61,10 +71,7 @@ const NOT_STATED_LABEL = "Tidak tercantum";
 const facetsOf = (rows: HospitalRow[]): Facet[] => {
   const counts = (id: FilterId) => {
     const map = new Map<string, number>();
-    for (const row of rows) {
-      const value = filterValueOf(id, row);
-      map.set(value, (map.get(value) ?? 0) + 1);
-    }
+    for (const row of rows) for (const value of filterValuesOf(id, row)) map.set(value, (map.get(value) ?? 0) + 1);
     return map;
   };
   // Values as the documents print them, alphabetical, with "not stated" last.
@@ -78,8 +85,14 @@ const facetsOf = (rows: HospitalRow[]): Facet[] => {
   };
   const tipe = counts("tipe");
   const tarif = counts("tarif");
+  const risk = counts("risiko");
+  const indication = counts("indikasi");
+  const vip = counts("vip");
+  const gl = counts("gl");
+  const status = counts("status");
 
   return [
+    { id: "status", label: "Status data", choices: STATUS_CHOICES.map((c) => ({ value: c.value, label: c.label, dot: c.dot, count: status.get(c.value) ?? 0 })) },
     { id: "kota", label: "Kota", choices: printed("kota") },
     { id: "loket", label: "Loket", choices: printed("loket") },
     { id: "tipe", label: "Tipe", choices: TIPES.map((t) => ({ value: t, label: `Tipe ${t}`, dot: TIPE_DOT[t], count: tipe.get(t) ?? 0 })) },
@@ -94,6 +107,10 @@ const facetsOf = (rows: HospitalRow[]): Facet[] => {
         count: tarif.get(s) ?? 0,
       })),
     },
+    { id: "risiko", label: "Risiko klaim", choices: RISK_CHOICES.map((c) => ({ ...c, count: risk.get(c.value) ?? 0 })) },
+    { id: "indikasi", label: "Indikasi", choices: RULES.map((r) => ({ value: r.id, label: r.label, count: indication.get(r.id) ?? 0 })) },
+    { id: "vip", label: "Kelas VIP", choices: SHARE_CHOICES.map((c) => ({ ...c, count: vip.get(c.value) ?? 0 })) },
+    { id: "gl", label: "GL berulang", choices: SHARE_CHOICES.map((c) => ({ ...c, count: gl.get(c.value) ?? 0 })) },
   ];
 };
 
@@ -124,11 +141,14 @@ export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial:
   const currentPage = Math.min(page, pageCount - 1);
   const pageRows = useMemo(() => shown.slice(currentPage * pageSize, (currentPage + 1) * pageSize), [shown, currentPage, pageSize]);
 
-  // Keep the URL in step without asking the server again, so the view can be shared or reloaded.
+  // Keep the URL in step without asking the server again, so the view can be shared or reloaded, and
+  // remember it in this browser for the next visit.
   useEffect(() => {
+    const entries = queryEntries({ search, filters, sort });
+    document.cookie = `${TABLE_STATE_COOKIE}=${encodeURIComponent(new URLSearchParams(entries).toString())}; path=/; max-age=31536000; samesite=lax`;
     const params = new URLSearchParams(window.location.search);
     for (const param of QUERY_PARAMS) params.delete(param);
-    for (const [param, value] of queryEntries({ search, filters, sort })) params.append(param, value);
+    for (const [param, value] of entries) params.append(param, value);
     const query = params.toString();
     if (query !== window.location.search.replace(/^\?/, "")) {
       window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
@@ -171,7 +191,7 @@ export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial:
   return (
     <div className={FULL_PAGE}>
       <div className={TOOLBAR}>
-        <TableSearchInput value={search} onChange={changeSearch} placeholder="Cari nama atau kota" label="Cari rumah sakit" />
+        <TableSearchInput value={search} onChange={changeSearch} placeholder="Cari nama, kota, atau loket" label="Cari rumah sakit" />
         <SortMenu sort={sort} onChange={changeSort} options={SORT_OPTIONS} />
         <FilterPanel
           facets={facets}
@@ -210,7 +230,7 @@ export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial:
                     <ColumnMenu
                       label={column.label}
                       sortDir={sort?.key === id ? sort.dir : null}
-                      onSort={(dir) => changeSort(sort?.key === id && sort.dir === dir ? null : { key: id, dir })}
+                      onSort={isSortable(id) ? (dir) => changeSort(sort?.key === id && sort.dir === dir ? null : { key: id, dir }) : undefined}
                       onHide={column.required ? undefined : () => prefs.hide(id)}
                     />
                     <ColumnResizeHandle onResize={(width) => prefs.setWidth(id, width)} />
@@ -281,7 +301,7 @@ const HospitalTableRow = memo(function HospitalTableRow({ row, columns }: { row:
         <CompareCheckbox id={row.id} name={row.name} />
       </td>
       {columns.map((id) => (
-        <td key={id} className={cn(TD, id !== "nama" && TINTED_CELL)}>
+        <td key={id} className={cn(TD, id !== "nama" && TINTED_CELL, NUMERIC.has(id) && "text-right tabular-nums")}>
           <HospitalCell column={id} row={row} />
         </td>
       ))}
@@ -305,7 +325,18 @@ function HospitalCell({ column, row }: { column: ColumnId; row: HospitalRow }) {
         </Link>
       );
     // Ratings show their level; the reason is the hover text, so a row stays one line.
+    case "status": {
+      const status = STATUS_CHOICES.find((c) => c.value === statusOf(row)) ?? STATUS_CHOICES[0];
+      return (
+        <span className="flex min-w-0 items-center gap-1.5" title={status.detail}>
+          <span className={cn("size-2 shrink-0 rounded-full", status.dot)} />
+          <span className="truncate">{status.label}</span>
+        </span>
+      );
+    }
+    // Without a tariff document there is nothing to rate.
     case "harga":
+      if (row.tariff === "belum-ada") return <Missing />;
       return row.price ? (
         <span title={row.price.reason}>
           <RatingPill level={row.price.level} />
@@ -314,10 +345,13 @@ function HospitalCell({ column, row }: { column: ColumnId; row: HospitalRow }) {
         <RatingPill level={null} />
       );
     case "layanan":
-      return (
+      if (row.tariff === "belum-ada") return <Missing />;
+      return row.services ? (
         <span title={row.services.reason}>
           <RatingPill level={row.services.level} />
         </span>
+      ) : (
+        <RatingPill level={null} />
       );
     case "tarif":
       return row.tariff === "belum-ada" ? (
@@ -336,5 +370,68 @@ function HospitalCell({ column, row }: { column: ColumnId; row: HospitalRow }) {
       return row.loket ? <span className="block truncate">{row.loket}</span> : <Missing />;
     case "kepemilikan":
       return row.ownership ? <span className="block truncate">{row.ownership}</span> : <Missing />;
+    default:
+      return <ClaimCell column={column} row={row} />;
+  }
+}
+
+const days = (value: number) => `${value.toLocaleString("id-ID", { maximumFractionDigits: 1 })} hari`;
+
+const truncated = (text: string | null) =>
+  text ? (
+    <span className="block truncate" title={text}>
+      {text}
+    </span>
+  ) : (
+    <Missing />
+  );
+
+/** The columns from the claim data; empty for a hospital the data doesn't have. */
+function ClaimCell({ column, row }: { column: ColumnId; row: HospitalRow }) {
+  const c = row.claims;
+  if (!c) return <Missing />;
+  switch (column) {
+    case "risiko":
+      return c.risk ? <RiskBadge risk={c.risk} /> : <span className="text-muted-foreground">Tidak terindikasi</span>;
+    case "indikasi":
+      return c.indications.length ? <RuleTags rules={c.indications} className="flex-nowrap overflow-hidden" /> : <Missing />;
+    case "klaim":
+      return c.claims.toLocaleString("id-ID");
+    case "terindikasi":
+      return c.flaggedClaims ? (
+        <>
+          {c.flaggedClaims.toLocaleString("id-ID")} <span className="text-muted-foreground">({formatPercent(c.flaggedClaims / c.claims)})</span>
+        </>
+      ) : (
+        <Missing />
+      );
+    case "potensi":
+      return c.overpayment > 0 ? <span className="font-medium">{formatRupiahShort(c.overpayment)}</span> : <Missing />;
+    case "los":
+      return c.avgLos === null ? <Missing /> : days(c.avgLos);
+    case "biaya":
+      return formatRupiahShort(c.paidAvg);
+    case "selisih":
+      return <Excess value={c.excessAvg} format={formatRupiahShort} />;
+    case "berat":
+      return formatPercent(c.severeShare);
+    case "vip":
+      return c.vipShare === null ? (
+        <Missing />
+      ) : (
+        <span className={cn(c.vipHigh && "rounded bg-tier-c-soft px-1.5 py-0.5 font-medium text-tier-c-ink")}>{formatPercent(c.vipShare)}</span>
+      );
+    case "gl":
+      return c.repeatShare === null ? (
+        <Missing />
+      ) : (
+        <span className={cn(c.repeatHigh && "rounded bg-tier-c-soft px-1.5 py-0.5 font-medium text-tier-c-ink")}>{formatPercent(c.repeatShare)}</span>
+      );
+    case "cedera":
+      return truncated(c.topDiagnosis);
+    case "tindakan":
+      return truncated(c.topSurgery);
+    default:
+      return <Missing />;
   }
 }

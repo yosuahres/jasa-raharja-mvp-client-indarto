@@ -8,7 +8,8 @@ import { menuItem, menuPopup } from "@/components/data-table/styles";
 
 /**
  * A column's header label, opening a small menu: sort ascending, sort descending, hide.
- * Choosing the sort it already has clears it. Without `onHide` (a required column) there is no hiding.
+ * Choosing the sort it already has clears it. Without `onSort` (a column that can't be sorted) there is no
+ * sorting, and without `onHide` (a required column) no hiding.
  */
 export function ColumnMenu({
   label,
@@ -18,7 +19,7 @@ export function ColumnMenu({
 }: {
   label: string;
   sortDir: SortDirection | null;
-  onSort: (dir: SortDirection) => void;
+  onSort?: (dir: SortDirection) => void;
   onHide?: () => void;
 }) {
   return (
@@ -35,24 +36,26 @@ export function ColumnMenu({
       <Menu.Portal>
         <Menu.Positioner className="isolate z-50 outline-none" sideOffset={6} align="start">
           <Menu.Popup className={menuPopup}>
-            <Menu.Item className={menuItem} onClick={() => onSort("asc")}>
-              <ArrowUpNarrowWide className="text-muted-foreground" />
-              Urutkan naik
-              {sortDir === "asc" && <CircleCheck className="ml-auto size-3.5! text-primary" />}
-            </Menu.Item>
-            <Menu.Item className={menuItem} onClick={() => onSort("desc")}>
-              <ArrowDownWideNarrow className="text-muted-foreground" />
-              Urutkan turun
-              {sortDir === "desc" && <CircleCheck className="ml-auto size-3.5! text-primary" />}
-            </Menu.Item>
-            {onHide && (
+            {onSort && (
               <>
-                <Menu.Separator className="-mx-1 my-1 h-px bg-border" />
-                <Menu.Item className={menuItem} onClick={onHide}>
-                  <EyeOff className="text-muted-foreground" />
-                  Sembunyikan kolom
+                <Menu.Item className={menuItem} onClick={() => onSort("asc")}>
+                  <ArrowUpNarrowWide className="text-muted-foreground" />
+                  Urutkan naik
+                  {sortDir === "asc" && <CircleCheck className="ml-auto size-3.5! text-primary" />}
+                </Menu.Item>
+                <Menu.Item className={menuItem} onClick={() => onSort("desc")}>
+                  <ArrowDownWideNarrow className="text-muted-foreground" />
+                  Urutkan turun
+                  {sortDir === "desc" && <CircleCheck className="ml-auto size-3.5! text-primary" />}
                 </Menu.Item>
               </>
+            )}
+            {onSort && onHide && <Menu.Separator className="-mx-1 my-1 h-px bg-border" />}
+            {onHide && (
+              <Menu.Item className={menuItem} onClick={onHide}>
+                <EyeOff className="text-muted-foreground" />
+                Sembunyikan kolom
+              </Menu.Item>
             )}
           </Menu.Popup>
         </Menu.Positioner>

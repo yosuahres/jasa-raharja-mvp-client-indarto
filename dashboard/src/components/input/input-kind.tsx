@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { CLAIM_IMPORT_STEPS } from "@/components/claims/claim-import-steps";
 import { JR_LIST_STEPS } from "@/components/jasa-raharja/jr-list-steps";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,11 +12,12 @@ import { ImportShell, type ImportStep, KIND_STEP } from "./import-shell";
 import { StepHeader } from "./step-layout";
 import { TARIFF_STEPS } from "./tariff-import-flow";
 
-export type InputKind = "tarif" | "daftar-rs";
+export type InputKind = "tarif" | "daftar-rs" | "klaim";
 
 const KINDS: { value: InputKind; label: string; detail: string; steps: ImportStep[] }[] = [
   { value: "tarif", label: "Dokumen tarif rumah sakit", detail: "PDF: Perda, Pergub, atau buku tarif", steps: TARIFF_STEPS },
   { value: "daftar-rs", label: "Daftar RS Jasa Raharja", detail: "Lembar kerja .xls dengan loket tiap rumah sakit", steps: JR_LIST_STEPS },
+  { value: "klaim", label: "Data klaim Jasa Raharja", detail: "Lembar kerja .xlsx klaim per GL: LOS, diagnosa, tindakan, kelas kamar, nilai klaim", steps: CLAIM_IMPORT_STEPS },
 ];
 
 /** Step 1 of the Input Data page: which kind of data is being uploaded; the steps above follow the choice. */

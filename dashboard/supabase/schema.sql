@@ -7,8 +7,9 @@
 --   3. Tariff books: uploaded PDFs, the rows the extractor read from them, and their prices.
 --      A document is the only input: the worker reads the hospital and all its tariff rows from it,
 --      files each row under a category, and the dashboard's preview confirms and publishes.
---   4. Access rules: signed-in staff can read and edit everything; anonymous visitors get nothing.
---   5. Storage: a private bucket for the tariff book PDFs.
+--   4. Claims: Jasa Raharja's claim export (one row per guarantee letter), uploaded whole as a spreadsheet.
+--   5. Access rules: signed-in staff can read and edit everything; anonymous visitors get nothing.
+--   6. Storage: a private bucket for the tariff book PDFs.
 --
 -- The extractor worker uses the service-role (secret) key, which bypasses the access rules.
 
@@ -213,7 +214,41 @@ from current_books b
 join public.tariff_treatments t on t.book_id = b.id
 group by t.key;
 
--- ---------------------------------------------------------------- 4. access rules
+-- ---------------------------------------------------------------- 4. claims
+
+-- Each upload of the claim spreadsheet replaces the previous one; the dashboard works out the red flags
+-- and hospital profiles from the rows (src/lib/claims/analysis.ts).
+create table public.claim_imports (
+  id          uuid primary key default gen_random_uuid(),
+  source_file text not null,
+  row_count   integer not null default 0,
+  -- 'loading' while its rows arrive in chunks; 'active' once complete, when the older import goes.
+  status      text not null default 'loading' check (status in ('loading', 'active')),
+  created_at  timestamptz not null default now()
+);
+
+create table public.claims (
+  id              bigint generated always as identity primary key,
+  import_id       uuid not null references public.claim_imports (id) on delete cascade,
+  guarantee_id    text not null,      -- ID Jaminan
+  victim_name     text,               -- Nama Korban
+  los             integer,            -- LOS, days; empty for Rawat Jalan
+  care_type       text,               -- Jenis Rawatan: 'Rawat Inap' | 'Rawat Jalan'
+  hospital_name   text not null,      -- Nama Rumah Sakit, e.g. 'RSUD SOEDONO, KOTA MADIUN'
+  diagnosis       text,               -- Diagnosa Cedera, ending in its ICD-10 code, e.g. 'Concussion S06.0'
+  injury_category text,               -- Kategori Cedera: 'Ringan' | 'Sedang' | 'Berat'
+  surgery         text,               -- Tindakan Operasi, 'Tidak Ada' when none
+  procedure_note  text,               -- Deskripsi Tindakan
+  room_class      text,               -- Kelas Kamar
+  billed          numeric,            -- Nilai Klaim Diajukan
+  paid            numeric,            -- Nilai Klaim Dibayarkan
+  region          text,               -- Wilayah
+  loket           text                -- Loket
+);
+
+create index claims_import_hospital on public.claims (import_id, hospital_name);
+
+-- ---------------------------------------------------------------- 5. access rules
 
 -- An internal tool: any signed-in staff member can read and edit everything.
 do $$
@@ -222,14 +257,14 @@ declare
 begin
   foreach t in array array[
     'specialties', 'facilities', 'jr_hospitals', 'hospitals', 'hospital_facilities', 'hospital_staff',
-    'tariff_books', 'tariff_rows', 'tariff_prices', 'tariff_treatments'
+    'tariff_books', 'tariff_rows', 'tariff_prices', 'tariff_treatments', 'claim_imports', 'claims'
   ] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('create policy "signed-in staff" on public.%I for all to authenticated using (true) with check (true)', t);
   end loop;
 end $$;
 
--- ---------------------------------------------------------------- 5. storage
+-- ---------------------------------------------------------------- 6. storage
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('tariff-books', 'tariff-books', false, 52428800, array['application/pdf'])  -- 50 MB

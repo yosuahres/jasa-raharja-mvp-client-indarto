@@ -1,14 +1,19 @@
-import { ExternalLink, FileUp, Grid3x3, ListOrdered, MapPin, Rows3, SlidersHorizontal } from "lucide-react";
+import { Building2, ExternalLink, FileUp, Grid3x3, ListOrdered, MapPin, Rows3, ShieldAlert, SlidersHorizontal } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { Chips } from "@/components/chips";
+import { LoketTable } from "@/components/claims/overview-tables";
+import { RiskBadge, RuleTags } from "@/components/claims/table";
 import { HomeMap } from "@/components/home/home-map";
 import { ScoreBar } from "@/components/score-parameters";
 import { TipeBadge } from "@/components/tier-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { CATEGORIES } from "@/lib/categories";
+import { claimSlug, type HospitalClaims, riskOf } from "@/lib/claims/analysis";
+import { getClaimAnalysis } from "@/lib/data/claims";
 import { getDataset, getUnfinishedUploads } from "@/lib/data/queries";
-import { formatPercent } from "@/lib/format";
+import { formatPercent, formatRupiahShort } from "@/lib/format";
 import { allSummaries, citiesOf, type HospitalSummary, PARAMETER_LABEL, WEIGHTS } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
@@ -43,12 +48,14 @@ const num = (value: number) => value.toLocaleString("id-ID");
 
 export default async function HomePage({ searchParams }: PageProps<"/">) {
   const params = await searchParams;
-  const [data, unfinished] = await Promise.all([getDataset(), getUnfinishedUploads()]);
-  const cities = citiesOf(data.hospitals);
+  const [data, unfinished, claims] = await Promise.all([getDataset(), getUnfinishedUploads(), getClaimAnalysis()]);
+  // The home page is about the hospitals' tariffs: hospitals known only from the claim data have their own section.
+  const documented = data.hospitals.filter((h) => h.tariffBook);
+  const cities = citiesOf(documented);
   // A city the documents name, or "" for every hospital — also what an unknown `kota` means.
   const city = cities.find((c) => c === first(params.kota)) ?? "";
 
-  const lokets = [...new Set(data.hospitals.flatMap((h) => (h.jasaRaharja ? [h.jasaRaharja.loketName] : [])))].sort();
+  const lokets = [...new Set(documented.flatMap((h) => (h.jasaRaharja ? [h.jasaRaharja.loketName] : [])))].sort();
   const loket = lokets.find((l) => l === first(params.loket)) ?? "";
   const chipHref = (kota: string, loketName: string) => {
     const q = new URLSearchParams();
@@ -57,7 +64,9 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
     return q.size ? `/?${q}` : "/";
   };
 
-  const ranked = allSummaries(data).sort(byRank);
+  const ranked = allSummaries(data)
+    .filter((s) => s.hospital.tariffBook)
+    .sort(byRank);
   const shown = ranked.filter((s) => (!city || s.hospital.city === city) && (!loket || s.hospital.jasaRaharja?.loketName === loket));
   const published = shown.filter((s) => s.hospital.tariffBook);
   const rows = published.reduce((sum, s) => sum + (s.hospital.tariffBook?.rows ?? 0), 0);
@@ -260,26 +269,120 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
           <p className="text-sm text-muted-foreground">{placed} dari {shown.length} rumah sakit ada di peta</p>
         </div>
       </Link>
+
+      {/* ------------------------------------------------------------ claims: the red flag worklist's top, and its totals */}
+      <ClaimsSection analysis={claims} />
     </div>
   );
 }
 
-/** One row of chips: the chosen one sits raised on the strip. */
-function Chips({ current, options, href }: { current: string; options: { value: string; label: string }[]; href: (value: string) => string }) {
+const CLAIM_TOP = 5;
+
+/** The top of Klaim RS: who to check first, and what the claim data adds up to. */
+function ClaimsSection({ analysis }: { analysis: Awaited<ReturnType<typeof getClaimAnalysis>> }) {
+  if (!analysis) {
+    return (
+      <Link href="/input?jenis=klaim" className={cn(CARD, "transition-colors hover:bg-muted/40 lg:col-span-12")}>
+        <h2 className={CARD_TITLE}>
+          <span className={ICON_TILE}>
+            <ShieldAlert />
+          </span>
+          Red flag klaim
+        </h2>
+        <p className="text-sm text-muted-foreground">Belum ada data klaim</p>
+      </Link>
+    );
+  }
+
+  const indicated = analysis.hospitals
+    .filter((h) => h.redFlags.length > 0)
+    .sort((a: HospitalClaims, b: HospitalClaims) => b.redFlags.length - a.redFlags.length || b.overpayment - a.overpayment);
+  const overpayment = indicated.reduce((sum, h) => sum + h.overpayment, 0);
+
   return (
-    <div className="flex flex-wrap gap-1 self-start rounded-lg bg-muted/60 p-1 text-xs">
-      {options.map((o) => (
-        <Link
-          key={o.value}
-          href={href(o.value)}
-          scroll={false}
-          aria-current={current === o.value ? "true" : undefined}
-          className="rounded-md px-2.5 py-1 font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=true]:bg-background aria-[current=true]:text-foreground aria-[current=true]:shadow-xs"
-        >
-          {o.label}
-        </Link>
-      ))}
-    </div>
+    <>
+      <section className={cn(CARD, "lg:col-span-8")}>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className={CARD_TITLE}>
+            <span className={ICON_TILE}>
+              <ShieldAlert />
+            </span>
+            Red flag klaim
+          </h2>
+          <Link href="/rumah-sakit?urut=risiko" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Lihat semua
+            <ExternalLink data-icon="inline-end" />
+          </Link>
+        </div>
+        <div className="overflow-x-auto rounded-xl border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
+                <th className="px-3 py-2 text-left font-medium">Rumah sakit</th>
+                <th className="px-3 py-2 text-left font-medium">Risiko</th>
+                <th className="px-3 py-2 text-left font-medium">Indikasi</th>
+                <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Klaim terindikasi</th>
+                <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Potensi kelebihan bayar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {indicated.slice(0, CLAIM_TOP).map((h) => (
+                <tr key={h.name}>
+                  <td className="max-w-64 px-3 py-2">
+                    <Link href={`/klaim/${claimSlug(h.name)}`} className="block truncate font-medium hover:underline" title={h.name}>
+                      {h.name}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2">
+                    <RiskBadge risk={riskOf(h.redFlags.length)} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <RuleTags rules={h.redFlags} />
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                    {num(h.flaggedClaims)} <span className="text-muted-foreground">dari {num(h.claims)}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-medium tabular-nums whitespace-nowrap">{formatRupiahShort(h.overpayment)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <Link href="/rumah-sakit?urut=risiko" className={cn(CARD, "transition-colors hover:bg-muted/40 lg:col-span-4")}>
+        <h2 className={CARD_TITLE}>
+          <span className={ICON_TILE}>
+            <ShieldAlert />
+          </span>
+          Data klaim
+        </h2>
+        <dl className="grid grid-cols-2 gap-4">
+          {[
+            { label: "Klaim", value: num(analysis.claims), detail: `${num(analysis.hospitals.length)} rumah sakit` },
+            { label: "RS terindikasi", value: num(indicated.length), detail: `dari ${num(analysis.hospitals.length)}` },
+            { label: "Risiko tinggi", value: num(indicated.filter((h) => riskOf(h.redFlags.length) === "tinggi").length), detail: "3 indikasi atau lebih" },
+            { label: "Potensi kelebihan bayar", value: formatRupiahShort(overpayment), detail: "dari RS terindikasi" },
+          ].map((f) => (
+            <div key={f.label}>
+              <dt className="text-xs text-muted-foreground">{f.label}</dt>
+              <dd className="text-2xl font-semibold tracking-tight tabular-nums">{f.value}</dd>
+              <dd className="text-xs text-muted-foreground">{f.detail}</dd>
+            </div>
+          ))}
+        </dl>
+      </Link>
+
+      <section className={cn(CARD, "lg:col-span-12")}>
+        <h2 className={CARD_TITLE}>
+          <span className={ICON_TILE}>
+            <Building2 />
+          </span>
+          Klaim per loket
+        </h2>
+        <LoketTable lokets={analysis.lokets} />
+      </section>
+    </>
   );
 }
 

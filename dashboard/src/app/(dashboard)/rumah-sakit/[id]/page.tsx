@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { ClaimProfile } from "@/components/claims/claim-profile";
 import { DetailPane } from "@/components/hospital/detail-pane";
 import { DetailTabs } from "@/components/hospital/detail-tabs";
 import { ProfileSidebar } from "@/components/hospital/profile-sidebar";
@@ -8,6 +9,8 @@ import { facilityItems, ResourceList, staffItems } from "@/components/hospital/r
 import { TARIFF_PAGE_SIZE, TariffLinesTable } from "@/components/hospital/tariff-book";
 import { TariffRowDialog } from "@/components/hospital/tariff-row-dialog";
 import { CATEGORIES, type CategoryId } from "@/lib/categories";
+import { hospitalDetail } from "@/lib/claims/analysis";
+import { claimNameOf, getClaimAnalysis, getHospitalClaims } from "@/lib/data/claims";
 import { getBookLines, getBookRowStats, getDataset } from "@/lib/data/queries";
 import type { Dataset, Hospital } from "@/lib/data/types";
 import { allSummaries, summarize } from "@/lib/scoring";
@@ -21,6 +24,15 @@ const comparisonPeer = (hospital: Hospital, data: Dataset) => {
     .filter((s) => s.hospital.id !== hospital.id && s.tipe !== null)
     .sort((a, b) => b.composite - a.composite);
   return (others.find((s) => s.hospital.city === hospital.city) ?? others[0])?.hospital;
+};
+
+/** The hospital in the claim data, with its claims, when the data has it. */
+const claimsOf = async (hospital: Hospital) => {
+  const analysis = await getClaimAnalysis();
+  const name = analysis && claimNameOf(hospital, analysis.hospitals.map((h) => h.name));
+  const inClaims = name ? analysis.hospitals.find((h) => h.name === name) : undefined;
+  if (!analysis || !inClaims) return null;
+  return { hospital: inClaims, detail: hospitalDetail(await getHospitalClaims(inClaims.name), analysis.baselines[inClaims.name]), limits: analysis.limits };
 };
 
 export async function generateMetadata({ params }: PageProps<"/rumah-sakit/[id]">): Promise<Metadata> {
@@ -44,12 +56,12 @@ export default async function HospitalPage({ params, searchParams }: PageProps<"
   const page = Math.max(1, Number(first(search.hal)) || 1);
 
   const book = hospital.tariffBook;
-  const [lines, rowStats] = book
-    ? await Promise.all([
-        getBookLines(book.id, { category, query, limit: TARIFF_PAGE_SIZE, offset: (page - 1) * TARIFF_PAGE_SIZE }),
-        getBookRowStats(book.id),
-      ])
-    : [null, null];
+  const [[lines, rowStats], claims] = await Promise.all([
+    book
+      ? Promise.all([getBookLines(book.id, { category, query, limit: TARIFF_PAGE_SIZE, offset: (page - 1) * TARIFF_PAGE_SIZE }), getBookRowStats(book.id)])
+      : [null, null],
+    claimsOf(hospital),
+  ]);
 
   const summary = summarize(hospital, data);
   const completeness = dataCompleteness(hospital, rowStats);
@@ -59,10 +71,13 @@ export default async function HospitalPage({ params, searchParams }: PageProps<"
   return (
     <DetailPane sidebar={<ProfileSidebar summary={summary} peer={comparisonPeer(hospital, data)} completeness={completeness} />}>
       <DetailTabs
+        // ?tab=klaim opens on the claims, as links from the claim data do.
+        defaultTab={first(search.tab) === "klaim" && claims ? "klaim" : "tarif"}
         counts={{
           tarif: book ? { value: book.rows, label: "baris tarif" } : undefined,
           fasilitas: { value: facilities.filter((f) => f.present).length, label: "fasilitas tersedia" },
           "tenaga-medis": { value: staff.filter((s) => s.present).length, label: "spesialis tersedia" },
+          klaim: claims ? { value: claims.hospital.claims, label: "klaim", warn: claims.hospital.redFlags.length > 0 } : undefined,
         }}
         panels={{
           tarif:
@@ -76,6 +91,7 @@ export default async function HospitalPage({ params, searchParams }: PageProps<"
             ),
           fasilitas: <ResourceList hospitalId={hospital.id} kind="fasilitas" items={facilities} roundTheClockLabel="24 jam" />,
           "tenaga-medis": <ResourceList hospitalId={hospital.id} kind="tenaga-medis" items={staff} roundTheClockLabel="On-call 24 jam" />,
+          klaim: claims ? <ClaimProfile hospital={claims.hospital} detail={claims.detail} limits={claims.limits} /> : undefined,
         }}
       />
     </DetailPane>

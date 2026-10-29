@@ -80,7 +80,8 @@ export default async function RecommendationPage({ searchParams }: PageProps<"/r
   const key = first(params.tindakan);
   const accidentCase = findAccidentCase(first(params.kasus));
   const [data, treatment] = await Promise.all([getDataset(), key ? getTreatment(key) : null]);
-  const cities = citiesOf(data.hospitals);
+  // Only where a hospital has a tariff document: referrals rank hospitals by what their documents price.
+  const cities = citiesOf(data.hospitals.filter((h) => h.tariffBook));
   // A point on the map ranks every hospital by how far it is; otherwise a city the documents name,
   // or "" for "Semua lokasi" — also what an unknown or missing `lokasi` means.
   const origin = parseOrigin((key) => first(params[key]));

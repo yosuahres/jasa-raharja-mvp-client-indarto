@@ -57,6 +57,16 @@ not read from the document. **Cari Rujukan** takes what is needed in words
 ("kraniotomi", "CT scan kepala") and a city, finds the rows that name it in every hospital's document, and
 ranks those hospitals by that price against the median, their general score, and same city / province.
 
+**Klaim RS** works from Jasa Raharja's claim export (one row per guarantee letter: LOS, diagnosis, operation,
+room class, amount billed and paid), uploaded as an .xlsx from Input Data; each upload replaces the last.
+Each claim is compared with similar claims at other hospitals (same jenis rawatan, ICD-10 category, operation
+status and room class; a hospital's own claims never set its bar) and flagged when it is a short stay at a high
+cost, a stay longer than 90% of its peers', a minor injury at the cost of a severe one, or no operation at the
+cost of an operated case. Cost is the amount billed, as the amount paid stops at the Rp20 juta cap. A hospital is
+a red flag on a rule when its share of flagged claims is in the top 20% of hospitals (CMS PEPPER's 80th
+percentile, at least 11 claims) and too high to be chance (one-sided binomial test, p < 0.05), and red flags
+are ordered by what the hospital was paid above the peer median. The method is in `src/lib/claims/analysis.ts`.
+
 ## Deploying (VPS)
 
 Both services run on the majorsales VPS beside the `majorsales-binapatria` stack, which already runs

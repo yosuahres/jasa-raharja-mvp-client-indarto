@@ -1,35 +1,37 @@
 "use client";
 
 import { Tabs } from "@base-ui/react/tabs";
-import { Building2, type LucideIcon, ReceiptText, Stethoscope } from "lucide-react";
+import { Building2, type LucideIcon, ReceiptText, ShieldAlert, Stethoscope } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export type TabId = "tarif" | "fasilitas" | "tenaga-medis";
+export type TabId = "tarif" | "fasilitas" | "tenaga-medis" | "klaim";
 
 const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: "tarif", label: "Tarif", icon: ReceiptText },
   { id: "fasilitas", label: "Fasilitas", icon: Building2 },
   { id: "tenaga-medis", label: "Tenaga medis", icon: Stethoscope },
+  { id: "klaim", label: "Klaim", icon: ShieldAlert },
 ];
 
 type Count = { value: number; label: string; warn?: boolean };
 
-/** The hospital page's right pane: a row of icon tabs over a scrolling panel. */
+/** The hospital page's right pane: a row of icon tabs over a scrolling panel. A tab without a panel isn't shown. */
 export function DetailTabs({
   panels,
   counts,
   defaultTab = "tarif",
 }: {
-  panels: Record<TabId, React.ReactNode>;
+  panels: Record<Exclude<TabId, "klaim">, React.ReactNode> & { klaim?: React.ReactNode };
   counts: Partial<Record<TabId, Count>>;
   defaultTab?: TabId;
 }) {
+  const tabs = TABS.filter((tab) => panels[tab.id] !== undefined);
   return (
     <Tabs.Root defaultValue={defaultTab} className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 border-b px-4">
         <Tabs.List aria-label="Bagian profil rumah sakit" className="flex items-center overflow-x-auto [scrollbar-width:none]">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const count = counts[tab.id];
             return (
               <Tabs.Tab
@@ -49,7 +51,7 @@ export function DetailTabs({
         </Tabs.List>
       </div>
 
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <Tabs.Panel key={tab.id} value={tab.id} className="min-h-0 flex-1 px-4 py-4 outline-none md:overflow-y-auto">
           {panels[tab.id]}
         </Tabs.Panel>

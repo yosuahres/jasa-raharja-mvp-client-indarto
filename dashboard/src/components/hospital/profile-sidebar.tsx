@@ -91,17 +91,34 @@ export function ProfileSidebar({
           {summary.tipe && <TipeBadge tipe={summary.tipe} />}
         </Field>
         <Field icon={Banknote} label="Harga">
-          <RatingPill level={summary.price?.level ?? null} />
-          {summary.price && <span className="block text-xs text-muted-foreground">{summary.price.reason}</span>}
+          {hospital.tariffBook ? (
+            <>
+              <RatingPill level={summary.price?.level ?? null} />
+              {summary.price && <span className="block text-xs text-muted-foreground">{summary.price.reason}</span>}
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground">Belum ada data tarif</span>
+          )}
         </Field>
         <Field icon={HeartPulse} label="Layanan">
-          <RatingPill level={summary.services.level} />
-          <span className="block text-xs text-muted-foreground">{summary.services.reason}</span>
+          {summary.services ? (
+            <>
+              <RatingPill level={summary.services.level} />
+              <span className="block text-xs text-muted-foreground">{summary.services.reason}</span>
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground">Belum ada data tarif</span>
+          )}
         </Field>
       </Section>
 
       <Section title="Penilaian per parameter">
-        <ScoreParameters parameters={summary.parameters} total={summary.servicesScore} />
+        {/* Without a tariff document, facilities or specialists there is nothing to score: zeros would be made up. */}
+        {hospital.tariffBook || hospital.facilities.length > 0 || hospital.staff.length > 0 ? (
+          <ScoreParameters parameters={summary.parameters} total={summary.servicesScore} />
+        ) : (
+          <p className="text-sm text-muted-foreground">Belum ada data</p>
+        )}
       </Section>
 
       <Section title="Profil">
