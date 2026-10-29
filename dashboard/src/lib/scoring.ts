@@ -173,6 +173,8 @@ export type HospitalSummary = {
   services: Rating<ServiceLevel> | null;
   /** Harga and Layanan together, 0–100 by place among the hospitals: what the rank and tipe come from. */
   composite: number;
+  /** Layanan alone, 0–100 by place among the hospitals as `composite` is: for rankings that judge price themselves. */
+  servicesPlace: number;
   /** Its quarter among every hospital with a published document; null until this one has one. */
   tipe: Tipe | null;
   placing: Placing<Tipe> | null;
@@ -182,7 +184,8 @@ export type HospitalSummary = {
  * Every hospital rated against the others, like Bluebook's price and quality lights: Harga by its
  * prices on rows other hospitals' documents name the same way, Layanan by what its document shows it
  * offers. Each is split into thirds; the rank weighs the two equally (Layanan alone until prices can
- * be compared) and is split into quarters, Tipe A to D.
+ * be compared; after that, a hospital whose own prices can't be sits in the middle on Harga) and is
+ * split into quarters, Tipe A to D.
  */
 export const allSummaries = (data: Dataset): HospitalSummary[] => {
   const published = data.hospitals.filter((h) => h.tariffBook);
@@ -194,10 +197,14 @@ export const allSummaries = (data: Dataset): HospitalSummary[] => {
   );
   const servicePlaces = placings(published, (h) => compositeOf(scores.get(h) ?? generalScores(h, data)), THIRDS);
 
+  // Once prices can be compared at all, a rated hospital whose prices can't sits in the middle on Harga:
+  // missing prices are neither a strength nor a weakness.
+  const unknownPrice = pricePlaces.size > 0 ? 0.5 : undefined;
+
   const rated = data.hospitals.map((hospital) => {
     const pricePlace = pricePlaces.get(hospital);
     const servicePlace = servicePlaces.get(hospital);
-    const parts = [pricePlace, servicePlace].filter((p): p is Placing => p !== undefined).map(percentile);
+    const parts = servicePlace ? [percentile(servicePlace), pricePlace ? percentile(pricePlace) : unknownPrice].filter((p) => p !== undefined) : [];
     const own = scores.get(hospital) ?? generalScores(hospital, data);
     return {
       hospital,
@@ -207,6 +214,7 @@ export const allSummaries = (data: Dataset): HospitalSummary[] => {
       price: pricePlace && hospital.priceIndex ? { level: PRICE_BY_TIER[pricePlace.tier], reason: priceReason(hospital.priceIndex) } : null,
       services: servicePlace ? { level: SERVICE_BY_TIER[servicePlace.tier], reason: serviceReason(hospital) } : null,
       composite: parts.length ? (parts.reduce((sum, p) => sum + p, 0) / parts.length) * 100 : 0,
+      servicesPlace: servicePlace ? percentile(servicePlace) * 100 : 0,
     };
   });
   const overall = placings(
@@ -266,8 +274,8 @@ export const treatmentNameOf = (line: SearchedLine) => line.treatmentName ?? lin
 const midOf = (line: { priceMin: number; priceMax: number }) => (line.priceMin + line.priceMax) / 2;
 
 /**
- * Ranks the hospitals in a city whose current document has rows found for a search: their general
- * score, and the price of their plainest matching row against every hospital's median. With an
+ * Ranks the hospitals in a city whose current document has rows found for a search: their Layanan
+ * rating, and the price of their plainest matching row against every hospital's median. With an
  * origin, how near they are to the accident weighs most of all, more than the price.
  */
 export const rankForTreatment = (lines: SearchedLine[], city: string, data: Dataset, origin: Origin | null = null): TreatmentMatch[] => {
@@ -287,9 +295,11 @@ export const rankForTreatment = (lines: SearchedLine[], city: string, data: Data
       const priceMid = midOf(line);
       const savingVsMedian = (medianPrice - priceMid) / medianPrice;
       const distanceKm = distanceFrom(origin, hospital);
+      // The price is judged on this treatment, so of its general rating only Layanan counts (Harga would
+      // count price twice). IGD and ambulance weigh again on top of Layanan: for an accident they come first.
       const composite = origin
-        ? 0.3 * summary.composite + 0.25 * costScore(priceMid / medianPrice) + 0.1 * serviceAccess(hospital) + 0.35 * nearness(distanceKm)
-        : 0.4 * summary.composite + 0.35 * costScore(priceMid / medianPrice) + 0.1 * serviceAccess(hospital);
+        ? 0.3 * summary.servicesPlace + 0.25 * costScore(priceMid / medianPrice) + 0.1 * serviceAccess(hospital) + 0.35 * nearness(distanceKm)
+        : 0.4 * summary.servicesPlace + 0.35 * costScore(priceMid / medianPrice) + 0.1 * serviceAccess(hospital);
 
       const strengths: string[] = [];
       const notes: string[] = [];
@@ -397,6 +407,7 @@ export const rankForCase = (lines: TreatmentLine[], caseSteps: AccidentStep[], c
     // Steps count most: a hospital that can do the operation beats one with many small tindakan.
     const coverage = 70 * (covered / steps.length) + 30 * (keys / mostKeys);
     const distanceKm = distanceFrom(origin, hospital);
+    // IGD and ambulance weigh again on top of the general rating: for an accident they come first.
     const composite = origin
       ? 0.35 * coverage + 0.25 * summary.composite + 0.05 * serviceAccess(hospital) + 0.35 * nearness(distanceKm)
       : 0.45 * coverage + 0.35 * summary.composite + 0.08 * serviceAccess(hospital);
