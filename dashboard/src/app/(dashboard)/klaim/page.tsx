@@ -1,9 +1,13 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 
-const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
+import { HospitalListPage } from "@/components/hospitals/hospital-list-page";
 
-/** Klaim RS is now part of Rumah Sakit: older links land there, highest claim risk first. */
-export default async function ClaimsPage({ searchParams }: PageProps<"/klaim">) {
-  const loket = first((await searchParams).loket);
-  redirect(`/rumah-sakit?urut=risiko${loket ? `&loket=${encodeURIComponent(loket)}` : ""}`);
+export const metadata: Metadata = {
+  title: "Indikasi Klaim",
+  description: "Rumah sakit dengan klaim terindikasi, prioritas pemeriksaan teratas lebih dulu",
+};
+
+/** The hospitals whose claims have an indication; each opens on its Klaim tab. */
+export default function ClaimsPage({ searchParams }: PageProps<"/klaim">) {
+  return <HospitalListPage view="klaim" searchParams={searchParams} />;
 }

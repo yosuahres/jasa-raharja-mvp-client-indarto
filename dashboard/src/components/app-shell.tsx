@@ -12,6 +12,7 @@ import {
   PanelLeftOpen,
   Route,
   Search,
+  ShieldAlert,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -51,10 +52,16 @@ const NAV: NavGroup[] = [
     tiled: true,
     items: [
       { href: "/rekomendasi", label: "Cari Rujukan", icon: Route },
-      // Bandingkan and the claim pages are reached from the hospital list.
-      { href: "/rumah-sakit", label: "Rumah Sakit", icon: Building2, also: ["/klaim", "/bandingkan"] },
+      // Bandingkan is reached from the hospital lists.
+      { href: "/rumah-sakit", label: "Rumah Sakit", icon: Building2, also: ["/bandingkan"] },
       { href: "/peta", label: "Peta Rumah Sakit", icon: MapIcon },
     ],
+  },
+  {
+    // Checking claims is its own job: only the hospitals to look at, each opening on its Klaim tab.
+    label: "Klaim",
+    tiled: true,
+    items: [{ href: "/klaim", label: "Indikasi Klaim", icon: ShieldAlert }],
   },
   {
     label: "Entri",

@@ -309,7 +309,7 @@ function ClaimsSection({ analysis }: { analysis: Awaited<ReturnType<typeof getCl
             </span>
             Red flag klaim
           </h2>
-          <Link href="/rumah-sakit?urut=risiko" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          <Link href="/klaim" className={buttonVariants({ variant: "outline", size: "sm" })}>
             Lihat semua
             <ExternalLink data-icon="inline-end" />
           </Link>
@@ -350,7 +350,7 @@ function ClaimsSection({ analysis }: { analysis: Awaited<ReturnType<typeof getCl
         </div>
       </section>
 
-      <Link href="/rumah-sakit?urut=risiko" className={cn(CARD, "transition-colors hover:bg-muted/40 lg:col-span-4")}>
+      <Link href="/klaim" className={cn(CARD, "transition-colors hover:bg-muted/40 lg:col-span-4")}>
         <h2 className={CARD_TITLE}>
           <span className={ICON_TILE}>
             <ShieldAlert />

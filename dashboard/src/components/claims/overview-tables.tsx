@@ -41,7 +41,7 @@ export function LoketTable({ lokets }: { lokets: LoketClaims[] }) {
           {lokets.map((l) => (
             <tr key={l.loket}>
               <td className={cn(TD, "font-medium whitespace-nowrap")}>
-                <Link href={`/rumah-sakit?urut=risiko&loket=${encodeURIComponent(l.loket)}`} className="hover:underline">
+                <Link href={`/rumah-sakit?loket=${encodeURIComponent(l.loket)}`} className="hover:underline">
                   {loketName(l.loket)}
                 </Link>
               </td>
@@ -53,7 +53,7 @@ export function LoketTable({ lokets }: { lokets: LoketClaims[] }) {
               <td className={TD_NUM}>{formatPercent(l.severeShare)}</td>
               <td className={TD_NUM}>
                 {l.redFlagHospitals > 0 ? (
-                  <Link href={`/rumah-sakit?urut=risiko&risiko=tinggi&risiko=sedang&risiko=rendah&loket=${encodeURIComponent(l.loket)}`} className="font-medium text-tier-c-ink hover:underline">
+                  <Link href={`/klaim?loket=${encodeURIComponent(l.loket)}`} className="font-medium text-tier-c-ink hover:underline">
                     {num(l.redFlagHospitals)}
                   </Link>
                 ) : (

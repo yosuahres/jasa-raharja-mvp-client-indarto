@@ -113,7 +113,7 @@ function CurrentData({ current }: { current: { rows: number; createdAt: string }
           {num(current.rows)} klaim · diperbarui {formatDate(current.createdAt)}
         </p>
       </div>
-      <Link href="/rumah-sakit?urut=risiko" className={buttonVariants({ variant: "outline", size: "sm" })}>
+      <Link href="/klaim" className={buttonVariants({ variant: "outline", size: "sm" })}>
         Lihat
       </Link>
     </div>

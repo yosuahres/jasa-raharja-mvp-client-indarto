@@ -28,7 +28,7 @@ export function ClaimSummarySection({ analysis, linked }: { analysis: Analysis |
             <Link href="/input?jenis=klaim" className={buttonVariants({ variant: "outline", size: "sm" })}>
               Unggah lagi
             </Link>
-            <Link href="/rumah-sakit?urut=risiko" className={buttonVariants({ size: "sm" })}>
+            <Link href="/klaim" className={buttonVariants({ size: "sm" })}>
               Lihat hasil
             </Link>
           </>

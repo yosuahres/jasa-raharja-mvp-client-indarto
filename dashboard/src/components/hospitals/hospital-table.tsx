@@ -1,6 +1,6 @@
 "use client";
 
-import { Hospital, RefreshCw } from "lucide-react";
+import { Hospital, RefreshCw, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { memo, useDeferredValue, useEffect, useMemo, useState, useTransition } from "react";
@@ -21,7 +21,6 @@ import {
   COLUMNS,
   type ColumnId,
   compareText,
-  DEFAULT_LAYOUT,
   type FilterId,
   type Filters,
   filterValuesOf,
@@ -32,11 +31,11 @@ import {
   NO_FILTERS,
   NOT_STATED,
   NUMERIC,
+  NO_CLAIMS,
+  NOT_INDICATED,
   QUERY_PARAMS,
   queryEntries,
-  TABLE_STATE_COOKIE,
   RISK_CHOICES,
-  SORT_OPTIONS,
   type SortKey,
   sortRows,
   STATUS_CHOICES,
@@ -47,6 +46,8 @@ import {
   TIPE_DOT,
   TIPES,
   SHARE_CHOICES,
+  type View,
+  VIEW_DEFS,
 } from "@/components/hospitals/hospital-list";
 import { LinkRow } from "@/components/link-row";
 import { RatingPill } from "@/components/rating";
@@ -55,8 +56,8 @@ import { RULES } from "@/lib/claims/analysis";
 import { formatPercent, formatRupiahShort } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-// v4: the claim columns and Status data joined; older saved layouts don't know them.
-const PREFS_KEY = "rumah-sakit:tabel:v4";
+// v5: a layout per view (Rujukan, Klaim); the single layout before them doesn't carry over.
+const PREFS_KEY = "rumah-sakit:tabel:v5";
 const CHECK_COL_WIDTH = 44;
 
 const TH =
@@ -67,8 +68,8 @@ const TINTED_CELL = "bg-purple-500/[0.04] dark:bg-purple-400/[0.06] group-has-ch
 
 const NOT_STATED_LABEL = "Tidak tercantum";
 
-/** Each filter's choices, with how many hospitals have each. */
-const facetsOf = (rows: HospitalRow[]): Facet[] => {
+/** Each filter's choices, with how many of the rows have each. */
+const facetsOf = (rows: HospitalRow[], view: View): (Facet & { id: FilterId })[] => {
   const counts = (id: FilterId) => {
     const map = new Map<string, number>();
     for (const row of rows) for (const value of filterValuesOf(id, row)) map.set(value, (map.get(value) ?? 0) + 1);
@@ -89,10 +90,8 @@ const facetsOf = (rows: HospitalRow[]): Facet[] => {
   const indication = counts("indikasi");
   const vip = counts("vip");
   const gl = counts("gl");
-  const status = counts("status");
 
   return [
-    { id: "status", label: "Status data", choices: STATUS_CHOICES.map((c) => ({ value: c.value, label: c.label, dot: c.dot, count: status.get(c.value) ?? 0 })) },
     { id: "kota", label: "Kota", choices: printed("kota") },
     { id: "loket", label: "Loket", choices: printed("loket") },
     { id: "tipe", label: "Tipe", choices: TIPES.map((t) => ({ value: t, label: `Tipe ${t}`, dot: TIPE_DOT[t], count: tipe.get(t) ?? 0 })) },
@@ -107,7 +106,15 @@ const facetsOf = (rows: HospitalRow[]): Facet[] => {
         count: tarif.get(s) ?? 0,
       })),
     },
-    { id: "risiko", label: "Risiko klaim", choices: RISK_CHOICES.map((c) => ({ ...c, count: risk.get(c.value) ?? 0 })) },
+    {
+      id: "risiko",
+      label: "Risiko klaim",
+      // Indikasi Klaim lists only hospitals with an indication, so "none" and "no claims" can't be picked there.
+      choices: RISK_CHOICES.filter((c) => view === "rujukan" || (c.value !== NOT_INDICATED && c.value !== NO_CLAIMS)).map((c) => ({
+        ...c,
+        count: risk.get(c.value) ?? 0,
+      })),
+    },
     { id: "indikasi", label: "Indikasi", choices: RULES.map((r) => ({ value: r.id, label: r.label, count: indication.get(r.id) ?? 0 })) },
     { id: "vip", label: "Kelas VIP", choices: SHARE_CHOICES.map((c) => ({ ...c, count: vip.get(c.value) ?? 0 })) },
     { id: "gl", label: "GL berulang", choices: SHARE_CHOICES.map((c) => ({ ...c, count: gl.get(c.value) ?? 0 })) },
@@ -115,12 +122,12 @@ const facetsOf = (rows: HospitalRow[]): Facet[] => {
 };
 
 /**
- * The hospital list: search, sort, filters and column settings above a grid table, paged below.
- * Rows come in ranking order. Search, filters and sort follow the URL (`q`, `kota`, `loket`, `tipe`, `milik`,
- * `tarif`, `urut`); column order, visibility and widths are kept in this browser.
- * Render inside CompareSelectionProvider.
+ * A hospital list (Rumah Sakit or Indikasi Klaim, by `view`): search, sort, filters and column settings
+ * above a grid table, paged below. Rows come in the page's order. Search, filters and sort follow the
+ * URL (`q`, `kota`, `loket`, `tipe`, `milik`, `tarif`, `risiko`, `urut`, …); column order, visibility and
+ * widths are kept in this browser, per view. Render inside CompareSelectionProvider.
  */
-export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial: HospitalQuery }) {
+export function HospitalTable({ view, rows, initial }: { view: View; rows: HospitalRow[]; initial: HospitalQuery }) {
   const [search, setSearch] = useState(initial.search);
   const [filters, setFilters] = useState<Filters>(initial.filters);
   const [sort, setSort] = useState<SortState<SortKey> | null>(initial.sort);
@@ -128,11 +135,13 @@ export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial:
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[1]);
   const deferredSearch = useDeferredValue(search);
 
-  const prefs = useColumnPrefs(PREFS_KEY, COLUMNS, DEFAULT_LAYOUT);
-  const facets = useMemo(() => facetsOf(rows), [rows]);
+  const viewDef = VIEW_DEFS[view];
+  const prefs = useColumnPrefs(`${PREFS_KEY}:${view}`, viewDef.columns, viewDef.layout);
+  const allFacets = useMemo(() => facetsOf(rows, view), [rows, view]);
+  const facets = useMemo(() => viewDef.filters.flatMap((id) => allFacets.filter((f) => f.id === id)), [allFacets, viewDef]);
   const shown = useMemo(
-    () => sortRows(rows.filter((r) => matches(r, deferredSearch, filters)), sort),
-    [rows, deferredSearch, filters, sort],
+    () => sortRows(rows.filter((r) => matches(r, deferredSearch, filters)), sort, view),
+    [rows, deferredSearch, filters, sort, view],
   );
 
   const visibleIds = useMemo(() => shown.map((r) => r.id), [shown]);
@@ -145,7 +154,7 @@ export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial:
   // remember it in this browser for the next visit.
   useEffect(() => {
     const entries = queryEntries({ search, filters, sort });
-    document.cookie = `${TABLE_STATE_COOKIE}=${encodeURIComponent(new URLSearchParams(entries).toString())}; path=/; max-age=31536000; samesite=lax`;
+    document.cookie = `${viewDef.cookie}=${encodeURIComponent(new URLSearchParams(entries).toString())}; path=/; max-age=31536000; samesite=lax`;
     const params = new URLSearchParams(window.location.search);
     for (const param of QUERY_PARAMS) params.delete(param);
     for (const [param, value] of entries) params.append(param, value);
@@ -153,7 +162,7 @@ export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial:
     if (query !== window.location.search.replace(/^\?/, "")) {
       window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
     }
-  }, [search, filters, sort]);
+  }, [viewDef, search, filters, sort]);
 
   // Any change to what is shown starts again from the first page.
   const changeSearch = (value: string) => {
@@ -183,7 +192,11 @@ export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial:
   if (rows.length === 0) {
     return (
       <div className={FULL_PAGE}>
-        <EmptyState className="flex-1" icon={Hospital} title="Belum ada rumah sakit" description="Daftar rumah sakit masih kosong." />
+        {view === "klaim" ? (
+          <EmptyState className="flex-1" icon={ShieldCheck} title="Tidak ada indikasi" description="Belum ada rumah sakit dengan klaim terindikasi." />
+        ) : (
+          <EmptyState className="flex-1" icon={Hospital} title="Belum ada rumah sakit" description="Daftar rumah sakit masih kosong." />
+        )}
       </div>
     );
   }
@@ -191,8 +204,8 @@ export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial:
   return (
     <div className={FULL_PAGE}>
       <div className={TOOLBAR}>
-        <TableSearchInput value={search} onChange={changeSearch} placeholder="Cari nama, kota, atau loket" label="Cari rumah sakit" />
-        <SortMenu sort={sort} onChange={changeSort} options={SORT_OPTIONS} />
+        <TableSearchInput value={search} onChange={changeSearch} placeholder={viewDef.searchPlaceholder} label="Cari rumah sakit" />
+        <SortMenu sort={sort} onChange={changeSort} options={viewDef.sorts} />
         <FilterPanel
           facets={facets}
           values={filters}
@@ -200,7 +213,7 @@ export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial:
           onClear={clearFilters}
           description="Persempit daftar rumah sakit. Pilihan langsung diterapkan."
         />
-        <ColumnSettings columns={COLUMNS} layout={prefs.layout} onChange={prefs.setLayout} canReset={!prefs.isDefault} onReset={prefs.reset} />
+        <ColumnSettings columns={viewDef.columns} layout={prefs.layout} onChange={prefs.setLayout} canReset={!prefs.isDefault} onReset={prefs.reset} />
         <div className="flex-1" />
         <RefreshButton />
       </div>
@@ -241,7 +254,7 @@ export function HospitalTable({ rows, initial }: { rows: HospitalRow[]; initial:
           </thead>
           <tbody>
             {pageRows.map((row) => (
-              <HospitalTableRow key={row.id} row={row} columns={prefs.visibleIds} />
+              <HospitalTableRow key={row.id} row={row} columns={prefs.visibleIds} href={hrefOf(view, row.id)} />
             ))}
           </tbody>
         </table>
@@ -290,11 +303,14 @@ function RefreshButton() {
   );
 }
 
+/** A row opens the hospital's page; from Indikasi Klaim, on its Klaim tab. */
+const hrefOf = (view: View, id: string) => `/rumah-sakit/${id}${view === "klaim" ? "?tab=klaim" : ""}`;
+
 // Memoised so dragging a column wider re-renders the header, not every row.
-const HospitalTableRow = memo(function HospitalTableRow({ row, columns }: { row: HospitalRow; columns: ColumnId[] }) {
+const HospitalTableRow = memo(function HospitalTableRow({ row, columns, href }: { row: HospitalRow; columns: ColumnId[]; href: string }) {
   return (
     <LinkRow
-      href={`/rumah-sakit/${row.id}`}
+      href={href}
       className="group/row cursor-pointer border-0 transition-colors hover:bg-muted/40 has-checked:bg-blue-500/[0.06] has-[a:focus-visible]:bg-muted/40 dark:has-checked:bg-blue-400/[0.06]"
     >
       <td className="w-10 border-b border-border py-1.5 pr-0 pl-3 text-sm">
@@ -302,7 +318,7 @@ const HospitalTableRow = memo(function HospitalTableRow({ row, columns }: { row:
       </td>
       {columns.map((id) => (
         <td key={id} className={cn(TD, id !== "nama" && TINTED_CELL, NUMERIC.has(id) && "text-right tabular-nums")}>
-          <HospitalCell column={id} row={row} />
+          <HospitalCell column={id} row={row} href={href} />
         </td>
       ))}
     </LinkRow>
@@ -311,12 +327,12 @@ const HospitalTableRow = memo(function HospitalTableRow({ row, columns }: { row:
 
 const Missing = () => <span className="text-muted-foreground">—</span>;
 
-function HospitalCell({ column, row }: { column: ColumnId; row: HospitalRow }) {
+function HospitalCell({ column, row, href }: { column: ColumnId; row: HospitalRow; href: string }) {
   switch (column) {
     case "nama":
       return (
         <Link
-          href={`/rumah-sakit/${row.id}`}
+          href={href}
           title={row.name}
           // `truncate` clips to the line box, so keep the underline offset small enough to stay inside it.
           className="block truncate font-medium underline decoration-foreground/40 underline-offset-2 transition-colors outline-none hover:decoration-foreground focus-visible:decoration-foreground"

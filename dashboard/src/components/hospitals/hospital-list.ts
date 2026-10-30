@@ -102,47 +102,68 @@ export const COLUMNS: ColumnDef<ColumnId>[] = [
   { id: "tindakan", label: "Tindakan operasi terbanyak", width: 280 },
 ];
 
-export const DEFAULT_LAYOUT: ColumnLayout<ColumnId> = {
-  order: COLUMNS.map((c) => c.id),
-  visible: {
-    nama: true,
-    status: true,
-    kota: true,
-    loket: true,
-    kepemilikan: false,
-    tipe: true,
-    harga: true,
-    layanan: true,
-    tarif: true,
-    risiko: true,
-    indikasi: true,
-    klaim: true,
-    terindikasi: false,
-    potensi: true,
-    los: false,
-    biaya: false,
-    selisih: false,
-    berat: false,
-    vip: false,
-    gl: false,
-    cedera: false,
-    tindakan: false,
-  },
+// ------------------------------------------------------------------ views
+
+/**
+ * The same table on two pages, for two jobs. Rumah Sakit (`rujukan`) lists every hospital, to find one to
+ * refer to; Indikasi Klaim (`klaim`) lists only the hospitals whose claims have an indication, worst
+ * first, to check. Each shows only its own columns, filters and sorts; more columns are in Kolom.
+ */
+export type View = "rujukan" | "klaim";
+
+type ViewDef = {
+  /** The cookie that keeps the page's last search, filters and sort. */
+  cookie: string;
+  /** Every column the view offers, in their first order. */
+  columns: ColumnDef<ColumnId>[];
+  layout: ColumnLayout<ColumnId>;
+  filters: FilterId[];
+  sorts: { value: SortKey; label: string }[];
+  searchPlaceholder: string;
 };
 
-/** Numbers line up on the right. */
-export const NUMERIC: ReadonlySet<ColumnId> = new Set(["klaim", "terindikasi", "potensi", "los", "biaya", "selisih", "berat", "vip", "gl"]);
+const viewColumns = (ids: ColumnId[]) => ids.map((id) => COLUMNS.find((c) => c.id === id) ?? COLUMNS[0]);
+
+const viewLayout = (ids: ColumnId[], shown: ColumnId[]): ColumnLayout<ColumnId> => ({
+  order: ids,
+  visible: Object.fromEntries(COLUMNS.map((c) => [c.id, shown.includes(c.id)])) as Record<ColumnId, boolean>,
+});
+
+// Rumah Sakit offers every column (the claim ones off until asked for); Indikasi Klaim only the claim ones.
+const RUJUKAN_COLUMNS: ColumnId[] = COLUMNS.map((c) => c.id);
+const KLAIM_COLUMNS: ColumnId[] = [
+  "nama",
+  "loket",
+  "kota",
+  "risiko",
+  "indikasi",
+  "potensi",
+  "terindikasi",
+  "klaim",
+  "biaya",
+  "selisih",
+  "los",
+  "berat",
+  "vip",
+  "gl",
+  "cedera",
+  "tindakan",
+];
 
 // ------------------------------------------------------------------ filters
 
-export type FilterId = "status" | "kota" | "loket" | "tipe" | "kepemilikan" | "tarif" | "risiko" | "indikasi" | "vip" | "gl";
+export type FilterId = "kota" | "loket" | "tipe" | "kepemilikan" | "tarif" | "risiko" | "indikasi" | "vip" | "gl";
 
 /** Ticked values per filter; an empty list doesn't filter. */
 export type Filters = Record<FilterId, string[]>;
 
-export const FILTER_IDS: FilterId[] = ["status", "kota", "loket", "tipe", "kepemilikan", "tarif", "risiko", "indikasi", "vip", "gl"];
+export const FILTER_IDS: FilterId[] = ["kota", "loket", "tipe", "kepemilikan", "tarif", "risiko", "indikasi", "vip", "gl"];
 
-export const NO_FILTERS: Filters = { status: [], kota: [], loket: [], tipe: [], kepemilikan: [], tarif: [], risiko: [], indikasi: [], vip: [], gl: [] };
+export const NO_FILTERS: Filters = { kota: [], loket: [], tipe: [], kepemilikan: [], tarif: [], risiko: [], indikasi: [], vip: [], gl: [] };
+
+/** The filters a view has, the others cleared: a link can't leave a filter on that the page doesn't show. */
+export const filtersFor = (view: View, filters: Filters): Filters =>
+  Object.fromEntries(FILTER_IDS.map((id) => [id, VIEW_DEFS[view].filters.includes(id) ? filters[id] : []])) as Filters;
 
 /** What data the app has on a hospital: its tariff document, Jasa Raharja's claims, both, or neither. */
 export type DataStatus = "lengkap" | "tanpa-klaim" | "tanpa-tarif" | "kosong";
@@ -197,7 +218,6 @@ export const loketLabel = (loket: string) => loket.replace(/^LOKET\s+/i, "").rep
 
 /** A row's values for a filter; it passes when any of them is ticked. */
 const FILTER_VALUES: Record<FilterId, (row: HospitalRow) => string[]> = {
-  status: (r) => [statusOf(r)],
   kota: (r) => [r.city || NOT_STATED],
   loket: (r) => [r.loket || NOT_STATED],
   tipe: (r) => [r.tipe ?? ""],
@@ -225,7 +245,7 @@ export type SortKey = Exclude<ColumnId, "indikasi" | "cedera" | "tindakan">;
 
 export const isSortable = (id: ColumnId): id is SortKey => SORT_OPTIONS.some((o) => o.value === id);
 
-export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "nama", label: "Nama" },
   { value: "status", label: "Status data" },
   { value: "kota", label: "Kota" },
@@ -246,6 +266,34 @@ export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "vip", label: "Kelas VIP" },
   { value: "gl", label: "GL berulang" },
 ];
+
+const sortsOf = (ids: SortKey[]) => ids.map((id) => SORT_OPTIONS.find((o) => o.value === id) ?? SORT_OPTIONS[0]);
+
+export const VIEW_DEFS: Record<View, ViewDef> = {
+  rujukan: {
+    cookie: "rumah-sakit-tabel",
+    columns: viewColumns(RUJUKAN_COLUMNS),
+    layout: viewLayout(RUJUKAN_COLUMNS, ["nama", "kota", "tipe", "harga", "layanan"]),
+    filters: ["kota", "tipe", "kepemilikan", "tarif", "loket"],
+    sorts: SORT_OPTIONS,
+    searchPlaceholder: "Cari nama atau kota",
+  },
+  klaim: {
+    cookie: "indikasi-klaim-tabel",
+    columns: viewColumns(KLAIM_COLUMNS),
+    layout: viewLayout(KLAIM_COLUMNS, ["nama", "loket", "risiko", "indikasi", "potensi"]),
+    filters: ["loket", "kota", "risiko", "indikasi", "vip", "gl"],
+    sorts: sortsOf(["nama", "loket", "kota", "risiko", "potensi", "terindikasi", "klaim", "biaya", "selisih", "los", "berat", "vip", "gl"]),
+    searchPlaceholder: "Cari nama, kota, atau loket",
+  },
+};
+
+/** Numbers line up on the right. */
+export const NUMERIC: ReadonlySet<ColumnId> = new Set(["klaim", "terindikasi", "potensi", "los", "biaya", "selisih", "berat", "vip", "gl"]);
+
+/** A sort the view offers; another view's sort is dropped. */
+export const sortFor = (view: View, sort: SortState<SortKey> | null) =>
+  sort && VIEW_DEFS[view].sorts.some((o) => o.value === sort.key) ? sort : null;
 
 const RISK_ORDER: Record<Risk, number> = { tinggi: 0, sedang: 1, rendah: 2 };
 
@@ -280,12 +328,19 @@ const SORT_VALUE: Record<SortKey, (row: HospitalRow) => string | number | null> 
 /** Indonesian alphabetical order, ignoring case and accents, with numbers by value. */
 export const compareText = new Intl.Collator("id", { sensitivity: "base", numeric: true }).compare;
 
+/** Most indications first, then the largest potential overpayment, then the most claims; not in the claim data last. */
+const byClaimRisk = (a: HospitalRow, b: HospitalRow) =>
+  (b.claims?.indications.length ?? -1) - (a.claims?.indications.length ?? -1) ||
+  (b.claims?.overpayment ?? 0) - (a.claims?.overpayment ?? 0) ||
+  (b.claims?.claims ?? 0) - (a.claims?.claims ?? 0);
+
 /**
  * Sorted copy of `rows`. Unknown values (no price yet, no date) go last either way. Ties keep the
- * order the rows came in, which is the ranking; without a sort that order is all there is.
+ * order the rows came in, which is the ranking. Without a sort, Rujukan keeps the ranking and Klaim
+ * puts the most worrying claims first.
  */
-export const sortRows = (rows: HospitalRow[], sort: SortState<SortKey> | null) => {
-  if (!sort) return rows;
+export const sortRows = (rows: HospitalRow[], sort: SortState<SortKey> | null, view: View) => {
+  if (!sort) return view === "klaim" ? [...rows].sort(byClaimRisk) : rows;
   const value = SORT_VALUE[sort.key];
   const sign = sort.dir === "asc" ? 1 : -1;
   return [...rows].sort((a, b) => {
@@ -303,7 +358,6 @@ export const sortRows = (rows: HospitalRow[], sort: SortState<SortKey> | null) =
 export type HospitalQuery = { search: string; filters: Filters; sort: SortState<SortKey> | null };
 
 const PARAM: Record<FilterId, string> = {
-  status: "status",
   kota: "kota",
   loket: "loket",
   tipe: "tipe",
@@ -316,7 +370,6 @@ const PARAM: Record<FilterId, string> = {
 };
 
 const ALLOWED: Partial<Record<FilterId, readonly string[]>> = {
-  status: STATUS_CHOICES.map((c) => c.value),
   tipe: TIPES,
   tarif: ["ada", "belum-ada"],
   risiko: RISK_CHOICES.map((c) => c.value),
@@ -328,8 +381,8 @@ const ALLOWED: Partial<Record<FilterId, readonly string[]>> = {
 /** Our params, to clear before writing them again. */
 export const QUERY_PARAMS = ["q", "urut", ...Object.values(PARAM)];
 
-/** `getAll` returns every value of a param, like `URLSearchParams.getAll`. */
-export const parseQuery = (getAll: (param: string) => string[]): HospitalQuery => {
+/** The view's search, filters and sort; `getAll` returns every value of a param, like `URLSearchParams.getAll`. */
+export const parseQuery = (view: View, getAll: (param: string) => string[]): HospitalQuery => {
   const filters = Object.fromEntries(
     FILTER_IDS.map((id) => {
       // Other pages link a loket by its full name ("LOKET CABANG MADIUN").
@@ -347,15 +400,12 @@ export const parseQuery = (getAll: (param: string) => string[]): HospitalQuery =
     ? { key: key as SortKey, dir: urut.startsWith("-") ? "desc" : "asc" }
     : null;
 
-  return { search: getAll("q")[0] ?? "", filters, sort };
+  return { search: getAll("q")[0] ?? "", filters: filtersFor(view, filters), sort: sortFor(view, sort) };
 };
 
-/**
- * The list's last search, filters and sort, kept in this browser so coming back to the page (from the
- * sidebar, say) finds them as they were. A cookie rather than localStorage so the server reads it and
- * the table opens already filtered. A link that carries its own params wins over it.
- */
-export const TABLE_STATE_COOKIE = "rumah-sakit-tabel";
+// Each view keeps its last search, filters and sort in this browser (VIEW_DEFS[view].cookie), so coming
+// back to the page from the sidebar finds them as they were. A cookie rather than localStorage so the
+// server reads it and the table opens already filtered. A link that carries its own params wins over it.
 
 export const queryEntries = ({ search, filters, sort }: HospitalQuery): [string, string][] => [
   ...(search.trim() ? [["q", search.trim()] as [string, string]] : []),

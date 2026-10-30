@@ -1,7 +1,7 @@
 "use client";
 
 import { Dialog } from "@base-ui/react/dialog";
-import { Building2, FileUp, type LucideIcon, MapIcon, Route, Search, X } from "lucide-react";
+import { Building2, FileUp, type LucideIcon, MapIcon, Route, Search, ShieldAlert, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -16,10 +16,18 @@ const PAGES: Entry[] = [
   {
     href: "/rumah-sakit",
     label: "Rumah Sakit",
-    detail: "Tarif, klaim, dan red flag",
+    detail: "Tipe, harga, dan layanan",
     group: "Halaman",
     icon: Building2,
-    keywords: ["rs", "daftar", "klaim", "red flag", "risiko", "banding", "bandingkan", "compare", "vip", "los", "gl", "berulang"],
+    keywords: ["rs", "daftar", "tarif", "tipe", "harga", "layanan", "banding", "bandingkan", "compare"],
+  },
+  {
+    href: "/klaim",
+    label: "Indikasi Klaim",
+    detail: "Rumah sakit dengan klaim terindikasi",
+    group: "Halaman",
+    icon: ShieldAlert,
+    keywords: ["klaim", "indikasi", "red flag", "risiko", "potensi", "kelebihan bayar", "pemeriksaan", "vip", "los", "gl", "berulang"],
   },
   { href: "/peta", label: "Peta Rumah Sakit", detail: "Lokasi rumah sakit", group: "Halaman", icon: MapIcon, keywords: ["peta", "map", "lokasi", "alamat"] },
   { href: "/input", label: "Input Data", detail: "Dokumen tarif dan data klaim", group: "Halaman", icon: FileUp, keywords: ["unggah", "upload", "tarif", "pdf", "input", "excel", "klaim"] },
