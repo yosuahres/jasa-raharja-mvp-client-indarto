@@ -1,6 +1,6 @@
 import type { AccidentStep } from "./accident-cases";
 import { CARE_CATEGORIES } from "./categories";
-import type { Dataset, Hospital, TariffLine, Tier, Tipe, TreatmentLine } from "./data/types";
+import { type Dataset, type Hospital, isApproximate, type TariffLine, type Tier, type Tipe, type TreatmentLine } from "./data/types";
 import { formatKm, haversineKm, type Origin } from "./origin";
 
 /** How the general score weighs each part. */
@@ -303,7 +303,8 @@ export const rankForTreatment = (lines: SearchedLine[], city: string, data: Data
 
       const strengths: string[] = [];
       const notes: string[] = [];
-      if (distanceKm !== null && distanceKm <= NEAR_KM) strengths.push(`${formatKm(distanceKm)} dari lokasi kejadian`);
+      if (distanceKm !== null && distanceKm <= NEAR_KM)
+        strengths.push(`${isApproximate(hospital.location) ? "± " : ""}${formatKm(distanceKm)} dari lokasi kejadian`);
       if (savingVsMedian >= 0.1) strengths.push(`Tarif ${Math.round(savingVsMedian * 100)}% di bawah median`);
       if (hospital.facilities.some((f) => f.facilityId === "igd" && f.available24h)) strengths.push("IGD 24 jam");
       if (savingVsMedian <= -0.15) notes.push(`Tarif ${Math.round(-savingVsMedian * 100)}% di atas median`);

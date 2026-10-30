@@ -8,7 +8,7 @@ import type { MapFocus, MapPin } from "@/components/map/hospital-map";
 import { RatingPill } from "@/components/rating";
 import { TipeBadge } from "@/components/tier-badge";
 import { buttonVariants } from "@/components/ui/button";
-import type { Tipe } from "@/lib/data/types";
+import { type HospitalLocation, isApproximate, type Tipe } from "@/lib/data/types";
 import type { PriceLevel, ServiceLevel } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
@@ -20,7 +20,7 @@ export type HomeMapRow = {
   tipe: Tipe | null;
   price: { level: PriceLevel; reason: string } | null;
   services: { level: ServiceLevel; reason: string } | null;
-  location: { lat: number; lng: number } | null;
+  location: HospitalLocation | null;
 };
 
 // Leaflet reaches for `window` as it loads, so the map only renders in the browser.
@@ -82,6 +82,7 @@ export function HomeMap({ rows = [] }: { rows?: HomeMapRow[] }) {
                     <span className="block truncate text-xs text-muted-foreground">
                       {row.city || "Kota tidak tercetak"}
                       {!row.location && " · lokasi belum ditemukan"}
+                      {isApproximate(row.location) && " · lokasi perkiraan"}
                     </span>
                   </td>
                   <td className={TD}>{row.tipe ? <TipeBadge tipe={row.tipe} /> : <span className="text-muted-foreground">—</span>}</td>

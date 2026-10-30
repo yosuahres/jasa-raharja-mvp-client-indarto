@@ -7,9 +7,10 @@ import { useEffect } from "react";
 import { AttributionControl, CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
 
 import { TipeBadge } from "@/components/tier-badge";
-import type { Tipe } from "@/lib/data/types";
+import { isApproximate, type LocationSource, type Tipe } from "@/lib/data/types";
+import { cn } from "@/lib/utils";
 
-export type MapPin = { id: string; name: string; city: string; tipe: Tipe | null; lat: number; lng: number };
+export type MapPin = { id: string; name: string; city: string; tipe: Tipe | null; lat: number; lng: number; source?: LocationSource };
 
 /** A pick from the list or the map. A new object per click, so picking the same hospital again flies back to it. */
 export type MapFocus = { pin: MapPin };
@@ -20,12 +21,28 @@ const INDONESIA = { center: [-2.5, 118] as [number, number], zoom: 5 };
 const FOCUS_ZOOM = 17;
 
 // Leaflet writes colors as SVG attributes, which can't read CSS variables; classes can, and win over them.
-const PIN_STYLE: Record<Tipe | "none", string> = {
-  A: "fill-tier-a stroke-background",
-  B: "fill-tier-b stroke-background",
-  C: "fill-tier-c stroke-background",
-  D: "fill-muted-foreground stroke-background",
-  none: "fill-muted-foreground stroke-background",
+const PIN_FILL: Record<Tipe | "none", string> = {
+  A: "fill-tier-a",
+  B: "fill-tier-b",
+  C: "fill-tier-c",
+  D: "fill-muted-foreground",
+  none: "fill-muted-foreground",
+};
+
+// An approximate pin is faint with a dashed ring in its own colour: it marks the town, not the hospital.
+const PIN_STROKE: Record<Tipe | "none", string> = {
+  A: "stroke-tier-a",
+  B: "stroke-tier-b",
+  C: "stroke-tier-c",
+  D: "stroke-muted-foreground",
+  none: "stroke-muted-foreground",
+};
+
+const pinOptions = (pin: MapPin) => {
+  const tipe = pin.tipe ?? "none";
+  return isApproximate(pin)
+    ? { className: cn(PIN_FILL[tipe], PIN_STROKE[tipe]), weight: 1.5, fillOpacity: 0.3, dashArray: "3 3" }
+    : { className: cn(PIN_FILL[tipe], "stroke-background"), weight: 2, fillOpacity: 0.95 };
 };
 
 /** Frames the pins whenever the filtered set changes. */
@@ -71,7 +88,7 @@ export function HospitalMap({ pins, focus, onPick }: { pins: MapPin[]; focus: Ma
           key={pin.id}
           center={[pin.lat, pin.lng]}
           radius={8}
-          pathOptions={{ className: PIN_STYLE[pin.tipe ?? "none"], weight: 2, fillOpacity: 0.95 }}
+          pathOptions={pinOptions(pin)}
           eventHandlers={{ click: () => onPick(pin) }}
         >
           <Popup>
@@ -81,6 +98,7 @@ export function HospitalMap({ pins, focus, onPick }: { pins: MapPin[]; focus: Ma
                 {pin.tipe && <TipeBadge tipe={pin.tipe} />}
                 {pin.city}
               </div>
+              {isApproximate(pin) && <p className="text-xs text-muted-foreground">Lokasi perkiraan</p>}
               <Link href={`/rumah-sakit/${pin.id}`} className="text-xs font-medium underline underline-offset-4">
                 Lihat rumah sakit
               </Link>

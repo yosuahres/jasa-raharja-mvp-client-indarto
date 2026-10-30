@@ -4,6 +4,7 @@ import Link from "next/link";
 import { TierBadge } from "@/components/tier-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { formatRupiah, joinFacts } from "@/lib/format";
+import { isApproximate } from "@/lib/data/types";
 import type { CaseMatch, CaseTreatment } from "@/lib/scoring";
 
 import { distanceText } from "./results";
@@ -35,7 +36,7 @@ export function CaseResultCard({
   const hospital = m.summary.hospital;
   const treatments = m.steps.reduce((sum, step) => sum + step.treatments.length, 0);
   const igd = hospital.facilities.some((f) => f.facilityId === "igd");
-  const distance = distanceText(m.distanceKm, hasOrigin);
+  const distance = distanceText(m.distanceKm, hasOrigin, isApproximate(hospital.location));
 
   const href = (key: string) => `/rekomendasi?${new URLSearchParams({ tindakan: key, kasus: caseId, ...locationParams })}`;
 

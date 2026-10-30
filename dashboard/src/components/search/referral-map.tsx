@@ -6,11 +6,11 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { AttributionControl, CircleMarker, MapContainer, Polyline, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
 
-import type { Tier } from "@/lib/data/types";
+import { isApproximate, type LocationSource, type Tier } from "@/lib/data/types";
 import { formatKm, type Origin, type Point } from "@/lib/origin";
 
 /** A ranked hospital on the map. */
-export type RankedPin = Point & { id: string; name: string; rank: number; tier: Tier; distanceKm: number };
+export type RankedPin = Point & { id: string; name: string; rank: number; tier: Tier; distanceKm: number; source?: LocationSource };
 
 const PIN_STYLE: Record<Tier, string> = {
   A: "fill-tier-a stroke-background",
@@ -59,7 +59,11 @@ export function ReferralMap({ origin, pins }: { origin: Origin; pins: RankedPin[
           <Popup>
             <div className="grid gap-1">
               <p className="font-medium text-balance">{pin.name}</p>
-              <p className="text-xs text-muted-foreground tabular-nums">{formatKm(pin.distanceKm)} dari lokasi kejadian</p>
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {isApproximate(pin) && "± "}
+                {formatKm(pin.distanceKm)} dari lokasi kejadian
+              </p>
+              {isApproximate(pin) && <p className="text-xs text-muted-foreground">Lokasi perkiraan</p>}
               <Link href={`/rumah-sakit/${pin.id}`} className="text-xs font-medium underline underline-offset-4">
                 Lihat rumah sakit
               </Link>

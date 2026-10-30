@@ -1,4 +1,4 @@
-import type { Tier, Tipe } from "@/lib/data/types";
+import { isApproximate, type Tier, type Tipe } from "@/lib/data/types";
 import { formatKm } from "@/lib/origin";
 import { treatmentNameOf, type TreatmentMatch } from "@/lib/scoring";
 
@@ -20,9 +20,13 @@ export type SearchResult = {
   distance: string | null;
 };
 
-/** The distance as a card says it; without a pin for the hospital, that it's unknown. */
-export const distanceText = (distanceKm: number | null, hasOrigin: boolean) =>
-  !hasOrigin ? null : distanceKm === null ? "Jarak belum diketahui" : `${formatKm(distanceKm)} dari lokasi kejadian`;
+/** The distance as a card says it; without a pin for the hospital, that it's unknown; to an approximate pin, roughly. */
+export const distanceText = (distanceKm: number | null, hasOrigin: boolean, approximate = false) =>
+  !hasOrigin
+    ? null
+    : distanceKm === null
+      ? "Jarak belum diketahui"
+      : `${approximate ? "± " : ""}${formatKm(distanceKm)} dari lokasi kejadian${approximate ? " (lokasi RS perkiraan)" : ""}`;
 
 export const toSearchResult = (m: TreatmentMatch, hasOrigin: boolean): SearchResult => ({
   id: m.summary.hospital.id,
@@ -34,5 +38,5 @@ export const toSearchResult = (m: TreatmentMatch, hasOrigin: boolean): SearchRes
   rowName: treatmentNameOf(m.line),
   priceMin: m.line.priceMin,
   priceMax: m.line.priceMax,
-  distance: distanceText(m.distanceKm, hasOrigin),
+  distance: distanceText(m.distanceKm, hasOrigin, isApproximate(m.summary.hospital.location)),
 });

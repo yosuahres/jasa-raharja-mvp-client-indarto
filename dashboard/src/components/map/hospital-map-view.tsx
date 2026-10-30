@@ -6,6 +6,8 @@ import { useState } from "react";
 
 import { TipeBadge } from "@/components/tier-badge";
 import { Card } from "@/components/ui/card";
+import { isApproximate } from "@/lib/data/types";
+import { joinFacts } from "@/lib/format";
 
 import type { MapFocus, MapPin } from "./hospital-map";
 
@@ -40,7 +42,9 @@ export function HospitalMapView({ pins, unplaced }: { pins: MapPin[]; unplaced: 
                 >
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-pretty">{pin.name}</span>
-                    {pin.city && <span className="block text-xs text-muted-foreground">{pin.city}</span>}
+                    {(pin.city || isApproximate(pin)) && (
+                      <span className="block text-xs text-muted-foreground">{joinFacts(pin.city, isApproximate(pin) && "lokasi perkiraan")}</span>
+                    )}
                   </span>
                   {pin.tipe && <TipeBadge tipe={pin.tipe} className="mt-0.5" />}
                 </button>
