@@ -7,7 +7,7 @@ import type { CategoryId } from "@/lib/categories";
 import { createClient } from "@/lib/supabase/server";
 
 import { LINE_SELECT, type LineRow, searchWords, toLine } from "./rows";
-import type { Catalog, CategoryCounts, Dataset, Hospital, JrHospital, PricedTreatment, TariffBook, TariffLine, Treatment, TreatmentLine } from "./types";
+import type { Catalog, CategoryCounts, Dataset, Hospital, JrHospital, LocationSource, PricedTreatment, TariffBook, TariffLine, Treatment, TreatmentLine } from "./types";
 
 const must = <T>(result: { data: T | null; error: { message: string } | null }, what: string): T => {
   if (result.error) throw new Error(`Could not load ${what}: ${result.error.message}`);
@@ -61,7 +61,7 @@ export const getJrHospitals = shared("jr-hospitals", async (supabase): Promise<J
 
 type PriceIndexRow = { hospital_id: string; price_index: number; compared_rows: number };
 
-type LocationRow = { id: string; lat: number | null; lng: number | null };
+type LocationRow = { id: string; lat: number | null; lng: number | null; location_source: LocationSource | null };
 
 type BookRow = {
   id: string;
@@ -86,6 +86,13 @@ const toBook = (row: BookRow | undefined): TariffBook | null =>
       }
     : null;
 
+/** Every pin with where it came from; before migrations/013 there is no source to read, so just the pins. */
+const getLocations = async (supabase: Supabase) => {
+  const withSource = await supabase.from("hospitals").select("id, lat, lng, location_source").not("lat", "is", null).returns<LocationRow[]>();
+  if (!withSource.error) return withSource;
+  return supabase.from("hospitals").select("id, lat, lng").not("lat", "is", null).returns<LocationRow[]>();
+};
+
 /** Every hospital with its current and previous published document. */
 export const getHospitals = shared("hospitals", async (supabase): Promise<Hospital[]> => {
   const [hospitalsResult, booksResult, priceResult, locationResult] = await Promise.all([
@@ -101,7 +108,7 @@ export const getHospitals = shared("hospitals", async (supabase): Promise<Hospit
       .eq("status", "published")
       .order("published_at", { ascending: false }),
     supabase.from("hospital_price_index").select("hospital_id, price_index, compared_rows").returns<PriceIndexRow[]>(),
-    supabase.from("hospitals").select("id, lat, lng").not("lat", "is", null).returns<LocationRow[]>(),
+    getLocations(supabase),
   ]);
   const hospitals = must<HospitalRow[]>(hospitalsResult, "hospitals");
   const books = must<BookRow[]>(booksResult, "tariff books");
@@ -118,7 +125,11 @@ export const getHospitals = shared("hospitals", async (supabase): Promise<Hospit
     return {
       ...h,
       jasaRaharja: toJr(jr_hospitals),
-      location: location?.lat != null && location.lng != null ? { lat: location.lat, lng: location.lng } : null,
+      // Pins from before migrations/013 have no source; they were all found by the lookup.
+      location:
+        location?.lat != null && location.lng != null
+          ? { lat: location.lat, lng: location.lng, source: location.location_source ?? "geocoder" }
+          : null,
       facilities: hospital_facilities.map((f) => ({ facilityId: f.facility_id, qty: f.qty, available24h: f.available_24h })),
       staff: hospital_staff.map((s) => ({ specialtyId: s.specialty_id, headcount: s.headcount, onCall24h: s.on_call_24h })),
       priceIndex: price ? { ratio: Number(price.price_index), compared: price.compared_rows } : null,

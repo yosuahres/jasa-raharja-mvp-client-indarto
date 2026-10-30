@@ -55,6 +55,7 @@ create table public.hospitals (
   lng        double precision,
   geocoded_query text,          -- what was looked up; a changed address looks it up again
   geocoded_at    timestamptz,   -- set with lat still null: nothing was found
+  location_source text check (location_source in ('geocoder', 'osm', 'manual', 'dummy')),  -- see migrations/013
   created_at timestamptz not null default now()
 );
 

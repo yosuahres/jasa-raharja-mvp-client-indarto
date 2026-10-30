@@ -124,6 +124,17 @@ export type DocumentHospital = { heading: string; name: string; pages: number };
 
 export const OWNERSHIPS = ["Pemerintah", "Swasta", "BUMN", "TNI/Polri"] as const;
 
+/**
+ * Where a hospital's pin came from (migrations/013): found by the dashboard's lookup, checked on
+ * OpenStreetMap, placed by hand on its page, or approximate (only its town or city is known).
+ */
+export type LocationSource = "geocoder" | "osm" | "manual" | "dummy";
+
+export type HospitalLocation = { lat: number; lng: number; source: LocationSource };
+
+/** A pin that only says roughly where: the hospital's town or city, not the hospital. */
+export const isApproximate = (location: { source?: LocationSource } | null | undefined) => location?.source === "dummy";
+
 export type Hospital = {
   id: string;
   name: string;
@@ -136,8 +147,8 @@ export type Hospital = {
   beds: number;
   /** Its row in Jasa Raharja's list, with the office that handles its claims; null until matched. */
   jasaRaharja: JrHospital | null;
-  /** Where its name and address put it on the map; null until the lookup finds it. */
-  location: { lat: number; lng: number } | null;
+  /** Its pin on the map and where the pin came from; null until it has one. */
+  location: HospitalLocation | null;
   facilities: HospitalFacility[];
   staff: HospitalStaff[];
   /**
