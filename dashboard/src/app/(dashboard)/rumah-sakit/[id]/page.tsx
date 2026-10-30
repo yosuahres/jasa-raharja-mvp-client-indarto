@@ -26,6 +26,12 @@ const comparisonPeer = (hospital: Hospital, data: Dataset) => {
   return (others.find((s) => s.hospital.city === hospital.city) ?? others[0])?.hospital;
 };
 
+/** Other hospitals' pins in its city: what's around when placing its own. */
+const nearbyPins = (hospital: Hospital, data: Dataset) =>
+  data.hospitals.flatMap((h) =>
+    h.id !== hospital.id && h.location && (!hospital.city || h.city === hospital.city) ? [{ id: h.id, name: h.name, lat: h.location.lat, lng: h.location.lng }] : [],
+  );
+
 /** The hospital in the claim data, with its claims, when the data has it. */
 const claimsOf = async (hospital: Hospital) => {
   const analysis = await getClaimAnalysis();
@@ -69,7 +75,7 @@ export default async function HospitalPage({ params, searchParams }: PageProps<"
   const staff = staffItems(hospital, data.catalog);
 
   return (
-    <DetailPane sidebar={<ProfileSidebar summary={summary} peer={comparisonPeer(hospital, data)} completeness={completeness} />}>
+    <DetailPane sidebar={<ProfileSidebar summary={summary} peer={comparisonPeer(hospital, data)} completeness={completeness} nearby={nearbyPins(hospital, data)} />}>
       <DetailTabs
         // ?tab=klaim opens on the claims, as links from the claim data do.
         defaultTab={first(search.tab) === "klaim" && claims ? "klaim" : "tarif"}

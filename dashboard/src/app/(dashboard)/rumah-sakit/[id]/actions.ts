@@ -67,6 +67,36 @@ export async function saveProfileField(hospitalId: string, field: ProfileField, 
   return saved();
 }
 
+/**
+ * The hospital's pin, put on the map by hand; the lookup leaves it there from then on. `intent`
+ * "otomatis" hands it back to the lookup, which finds the hospital again or puts it near its town.
+ */
+export async function savePin(_previous: ActionState, data: FormData): Promise<ActionState> {
+  const supabase = await createClient();
+  const denied = await requireUser(supabase);
+  if (denied) return { error: denied };
+  const hospitalId = text(data, "hospital_id");
+
+  if (text(data, "intent") === "otomatis") {
+    const { error } = await supabase.from("hospitals").update({ location_source: null, geocoded_query: null }).eq("id", hospitalId);
+    if (error) return { error: saveError(error) };
+    after(() => geocodeHospital(supabase, hospitalId));
+    return saved();
+  }
+
+  const lat = Number(text(data, "lat"));
+  const lng = Number(text(data, "lng"));
+  if (!text(data, "lat") || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return { error: "Klik peta di letak rumah sakit." };
+  }
+  const { error } = await supabase
+    .from("hospitals")
+    .update({ lat, lng, location_source: "manual", geocoded_at: new Date().toISOString() })
+    .eq("id", hospitalId);
+  if (error) return { error: saveError(error) };
+  return saved();
+}
+
 export type BookField = "version" | "year";
 
 /** The published document's version, or the year its tariffs are for, typed in where it's shown. */

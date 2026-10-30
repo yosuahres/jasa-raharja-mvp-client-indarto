@@ -12,6 +12,7 @@ import {
   type LucideIcon,
   Map as MapIcon,
   MapPin,
+  MapPinned,
   RefreshCw,
   Shapes,
   Store,
@@ -22,12 +23,21 @@ import Link from "next/link";
 import { RatingPill } from "@/components/rating";
 import { ScoreParameters } from "@/components/score-parameters";
 import { TipeBadge } from "@/components/tier-badge";
-import type { Hospital } from "@/lib/data/types";
+import type { ContextPin } from "@/components/search/location-map";
+import { type Hospital, isApproximate, type LocationSource } from "@/lib/data/types";
 import type { HospitalSummary } from "@/lib/scoring";
 import { bookYear, type Completeness } from "@/lib/tariff-book";
 import { cn } from "@/lib/utils";
 
 import { BookFact, ProfileFact } from "./editable-facts";
+import { PinDialog } from "./pin-dialog";
+
+const PIN_LABEL: Record<LocationSource, string> = {
+  geocoder: "Ditemukan otomatis",
+  osm: "Terverifikasi",
+  manual: "Diatur manual",
+  dummy: "Perkiraan",
+};
 
 const ACTION =
   "flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground transition-colors outline-none hover:bg-muted/70 focus-visible:ring-3 focus-visible:ring-ring/50";
@@ -37,11 +47,14 @@ export function ProfileSidebar({
   summary,
   peer,
   completeness,
+  nearby,
 }: {
   summary: HospitalSummary;
   /** Who the compare button pairs it with. */
   peer?: Hospital;
   completeness: Completeness;
+  /** Other hospitals' pins in its city, for bearings when placing its own. */
+  nearby: ContextPin[];
 }) {
   const { hospital } = summary;
   const book = hospital.tariffBook;
@@ -148,6 +161,14 @@ export function ProfileSidebar({
         </Field>
         <Field icon={MapIcon} label="Provinsi">
           <ProfileFact hospitalId={hospital.id} field="province" value={hospital.province} />
+        </Field>
+        <Field icon={MapPinned} label="Lokasi">
+          <span className="flex flex-wrap items-center justify-between gap-x-2">
+            <span className={cn((!hospital.location || isApproximate(hospital.location)) && "text-tier-c-ink")}>
+              {hospital.location ? PIN_LABEL[hospital.location.source] : "Belum ditemukan"}
+            </span>
+            <PinDialog hospitalId={hospital.id} location={hospital.location} nearby={nearby} />
+          </span>
         </Field>
       </Section>
 
